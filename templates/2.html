@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>TCP 聊天服务器</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial; margin: 0; padding: 0; }
+        #log { height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px; }
+        #inputArea { display: flex; margin-top: 10px; }
+        input { flex: 1; padding: 10px; }
+        button { padding: 10px; }
+    </style>
+</head>
+<body>
+    <h2 style="margin-left:10px">TCP 聊天服务器 Web</h2>
+    <div id="log"></div>
+    <div id="inputArea">
+        <input id="msgInput" placeholder="输入消息..." />
+        <button onclick="sendMessage()">发送</button>
+    </div>
+
+    <script>
+        const socket = io();
+
+        function appendLog(msg) {
+            const log = document.getElementById('log');
+            log.innerHTML += `<div>${msg}</div>`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('msgInput');
+            const msg = input.value.trim();
+            if (msg) {
+                socket.emit('send_message', { message: msg });
+                input.value = '';
+            }
+        }
+
+        socket.on('log', data => {
+            appendLog(data.message);
+        });
+
+        socket.on('disconnected', () => {
+            alert("客户端已断开连接！");
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>传感器控制台</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body {
+            display: flex;
+            font-family: Arial;
+            margin: 0;
+        }
+        #sidebar {
+            width: 200px;
+            background: #2c3e50;
+            color: white;
+            height: 100vh;
+            padding: 10px;
+        }
+        #sidebar button {
+            width: 100%;
+            margin: 5px 0;
+            padding: 10px;
+            background: #34495e;
+            border: none;
+            color: white;
+            cursor: pointer;
+        }
+        #main {
+            flex: 1;
+            padding: 20px;
+        }
+        .device, .sensor-box {
+            border: 1px solid #ccc;
+            margin: 10px 0;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <button onclick="switchTab('dashboard')">Dashboard</button>
+        <button onclick="switchTab('device')">设备管理</button>
+        <button onclick="switchTab('control')">控制台</button> <!-- ✅ 新增控制台按钮 -->
+    </div>
+    <div id="main">
+        <div id="dashboard"></div>
+        <div id="device" style="display:none"></div>
+        <div id="control" style="display:none"></div> <!-- ✅ 新增控制台区域 -->
+    </div>
+
+    <script>
+        const socket = io();
+
+        function switchTab(tab) {
+         
+            const tabs = ['dashboard', 'device', 'control'];
+            tabs.forEach(id => {
+                document.getElementById(id).style.display = (tab === id) ? 'block' : 'none';
+            });
+        }
+
+        const dashboardMap = {};
+
+        socket.on('dashboard_data', data => {
+            let box = dashboardMap[data.addr];
+            if (!box) {
+                box = document.createElement('div');
+                box.className = 'sensor-box';
+                box.id = 'sensor-' + data.addr;
+                document.getElementById('dashboard').appendChild(box);
+                dashboardMap[data.addr] = box;
+            }
+            box.innerHTML = `<strong>${data.addr}</strong><br>类型: ${data.type}<br>`;
+            if (data.type === '温湿度') {
+                box.innerHTML += `🌡️ 温度: ${data.data.temp} ℃<br>💧 湿度: ${data.data.humi} %`;
+            } else if (data.type === '蜂鸣器' || data.type === '风扇') {
+                box.innerHTML += `状态: ${data.data.status}`;
+                if (data.type === '风扇') {
+                    // 在控制台生成按钮
+                const controlPanel = document.getElementById('control');
+                if (!document.getElementById('fan-control-' + data.addr)) {
+                    const fanBox = document.createElement('div');
+                    fanBox.className = 'sensor-box';
+                    fanBox.id = 'fan-control-' + data.addr;
+                    fanBox.innerHTML = `
+                        <strong>${data.addr} - 风扇控制</strong><br>
+                        <button onclick="sendFanCommand('${data.addr}', true)">启动</button>
+                        <button onclick="sendFanCommand('${data.addr}', false)">关闭</button>
+                    `;
+                    controlPanel.appendChild(fanBox);
+                }
+            }
+            } else {
+                box.innerHTML += '数据暂未处理';
+            }
+        });
+
+        socket.on('client_list', list => {
+            const deviceDiv = document.getElementById('device');
+            deviceDiv.innerHTML = '<h3>连接设备列表</h3>';
+            list.forEach(c => {
+                const dev = document.createElement('div');
+                dev.className = 'device';
+                dev.innerHTML = `设备 IP: ${c.addr}<br>类型: ${c.type}`;
+                deviceDiv.appendChild(dev);
+            });
+        });
+
+        function sendFanCommand(target, on) {
+            const msg = on ? 'AAOC02010F0200A10101016E' : 'AAOC02010F0200A10101006E';
+            socket.emit('send_message', { message: msg, target: target });
+        }
+
+        socket.on('disconnected', data => {
+            const addr = data.addr;
+        
+            // 删除 dashboard 中的卡片
+            const sensorBox = document.getElementById('sensor-' + addr);
+            if (sensorBox) {
+                sensorBox.remove();
+            }
+        
+            // 删除控制面板里的风扇按钮等
+            const fanControl = document.getElementById('fan-control-' + addr);
+            if (fanControl) {
+                fanControl.remove();
+            }
+        
+            console.log(`客户端 ${addr} 已断开，界面已清理`);
+        });
+
+    </script>
+</body>
+</html>

@@ -9,33 +9,132 @@
     <style>
         body {
             display: flex;
-            font-family: Arial;
+            font-family: 'Arial', sans-serif;
             margin: 0;
+            background-color: #f9f9f9; /* 背景颜色 */
+            color: #333; /* 默认字体颜色 */
         }
+
         #sidebar {
-            width: 200px;
+            width: 220px;
             background: #2c3e50;
             color: white;
             height: 100vh;
-            padding: 10px;
+            padding: 20px;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1); /* 添加阴影 */
         }
+
         #sidebar button {
             width: 100%;
-            margin: 5px 0;
-            padding: 10px;
+            margin: 15px 0;
+            padding: 12px;
             background: #34495e;
             border: none;
             color: white;
             cursor: pointer;
+            font-size: 16px;
+            border-radius: 8px; /* 圆角按钮 */
+            transition: background 0.3s ease, transform 0.2s ease;
         }
+
+        #sidebar button:hover {
+            background: #1abc9c; /* 鼠标悬停时的颜色 */
+            transform: translateY(-3px); /* 鼠标悬停时上移 */
+        }
+
         #main {
             flex: 1;
             padding: 20px;
+            overflow-y: auto; /* 添加滚动条 */
         }
+
+        h3 {
+            color: #2c3e50;
+            border-bottom: 2px solid #1abc9c;
+            padding-bottom: 5px;
+            margin-bottom: 20px;
+        }
+
         .device, .sensor-box {
-            border: 1px solid #ccc;
-            margin: 10px 0;
-            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin: 15px 0;
+            padding: 20px;
+            background: white;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* 添加阴影 */
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .device:hover, .sensor-box:hover {
+            transform: translateY(-5px); /* 鼠标悬停时上移 */
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2); /* 鼠标悬停时阴影加深 */
+        }
+
+        button {
+            font-size: 14px;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.3s ease, transform 0.2s ease;
+        }
+
+        button:hover {
+            background: #1abc9c;
+            color: white;
+            transform: translateY(-3px);
+        }
+
+        canvas {
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        #dashboard {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: space-between;
+        }
+
+        #dashboard canvas {
+            flex: 1;
+            max-width: 48%; /* 图表宽度 */
+        }
+
+        #control {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: space-between;
+        }
+
+        #control .sensor-box {
+            flex: 1;
+            max-width: 48%; /* 控制面板中的卡片宽度 */
+        }
+
+        #database {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        #database .data-section {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        #database .data-section > div {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
     </style>
 </head>
@@ -48,36 +147,41 @@
     </div>
     <div id="main">
         <div id="dashboard">
-            <canvas id="temp-humi-chart" width="400" height="200"></canvas>
-            <canvas id="light-chart" width="400" height="200"></canvas> <!-- 光照图表 -->
+            <h3>实时数据图表</h3>
+            <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+                <canvas id="temp-humi-chart" width="400" height="200"></canvas>
+                <canvas id="light-chart" width="400" height="200"></canvas>
+            </div>
         </div>
         <div id="device" style="display:none"></div>
-        <div id="control" style="display:none"></div> <!-- ✅ 新增控制台区域 -->
+        <div id="control" style="display:none">
+            <h3>控制台</h3>
+            <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+                <!-- 动态生成的控制面板内容 -->
+            </div>
+        </div>
         <div id="database" style="display:none">
-            <div style="display: flex; justify-content: space-between;">
-                <!-- 温湿度实时数据 -->
-                <div style="width: 48%;">
-                    <h3>温湿度实时数据</h3>
+            <h3>数据库管理</h3>
+            <div class="data-section">
+                <div>
+                    <h4>温湿度实时数据</h4>
                     <div id="realtime-data"></div>
                 </div>
-
-                <!-- 光照实时数据 -->
-                <div style="width: 48%;">
-                    <h3>光照实时数据</h3>
+                <div>
+                    <h4>光照实时数据</h4>
                     <div id="realtime-light-data"></div>
                 </div>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-top: 20px;">
-                <div style="width: 48%;">
-                    <h3>温湿度历史数据</h3>
+            <div class="data-section">
+                <div>
+                    <h4>温湿度历史数据</h4>
                     <input type="datetime-local" id="start-time">
                     <input type="datetime-local" id="end-time">
                     <button onclick="fetchHistoryData()">查询温湿度</button>
                     <div id="history-data"></div>
                 </div>
-
-                <div style="width: 48%;">
-                    <h3>光照历史数据</h3>
+                <div>
+                    <h4>光照历史数据</h4>
                     <input type="datetime-local" id="light-start-time">
                     <input type="datetime-local" id="light-end-time">
                     <button onclick="fetchHistoryLight()">查询光照</button>
@@ -259,7 +363,7 @@
             } else if (data.type === '数码管') {
                 // 使用全局变量 currentHumi 判断湿度值
                 if (currentHumi !== null) {
-                    const humiColor = currentHumi > 50 ? 'red' : 'black';
+                    const humiColor = currentHumi > 70 ? 'red' : 'black';
                     box.innerHTML += `<span style="color: ${humiColor};">💧 湿度: ${currentHumi} %</span>`;
 
                     // 自动控制逻辑

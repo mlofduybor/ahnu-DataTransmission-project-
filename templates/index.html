@@ -90,6 +90,8 @@
     <script>
         const socket = io();
 
+        let currentHumi = null; // 全局变量，用于存储当前湿度值
+
         function switchTab(tab) {
          
             const tabs = ['dashboard', 'device', 'control', 'database'];
@@ -195,22 +197,20 @@
             }
             box.innerHTML = `<strong>${data.addr}</strong><br>类型: ${data.type}<br>`;
             if (data.type === '温湿度') {
-                box.innerHTML += `🌡️ 温度: ${data.data.temp} ℃<br>💧 湿度: ${data.data.humi} %`;
+                const temp = data.data.temp;
+                const humi = parseInt(data.data.humi, 10); // 转换湿度为整数
+                currentHumi = humi; // 更新全局变量
+                box.innerHTML += `🌡️ 温度: ${temp} ℃<br>💧 湿度: ${humi} %`;
 
                 // 更新图表数据
                 const currentTime = new Date().toLocaleTimeString();
                 if (tempHumiChart) {
-                    // 限制图表显示的最大数据点数
                     const maxDataPoints = 10;
 
-                    // 更新温度数据
                     tempHumiChart.data.labels.push(currentTime);
-                    tempHumiChart.data.datasets[0].data.push(data.data.temp);
+                    tempHumiChart.data.datasets[0].data.push(temp);
+                    tempHumiChart.data.datasets[1].data.push(humi);
 
-                    // 更新湿度数据
-                    tempHumiChart.data.datasets[1].data.push(data.data.humi);
-
-                    // 移除多余的数据点
                     if (tempHumiChart.data.labels.length > maxDataPoints) {
                         tempHumiChart.data.labels.shift();
                         tempHumiChart.data.datasets[0].data.shift();
@@ -256,6 +256,41 @@
                         controlPanel.appendChild(fanBox);
                     }
                 }
+            } else if (data.type === '数码管') {
+                // 使用全局变量 currentHumi 判断湿度值
+                if (currentHumi !== null) {
+                    const humiColor = currentHumi > 50 ? 'red' : 'black';
+                    box.innerHTML += `<span style="color: ${humiColor};">💧 湿度: ${currentHumi} %</span>`;
+
+                    // 自动控制逻辑
+                    if (currentHumi > 70) {
+                        sendSegCommand(data.addr, true); // 湿度大于50，开启数码管
+                    } else {
+                        sendSegCommand(data.addr, false); // 湿度小于等于50，关闭数码管
+                    }
+                } else {
+                    box.innerHTML += `<span style="color: gray;">💧 湿度数据不可用</span>`;
+                }
+
+                // 在控制台中显示数码管状态
+                const controlPanel = document.getElementById('control');
+                if (!document.getElementById('seg-control-' + data.addr)) {
+                    const segBox = document.createElement('div');
+                    segBox.className = 'sensor-box';
+                    segBox.id = 'seg-control-' + data.addr;
+                    segBox.innerHTML = `
+                        <strong>${data.addr} - 数码管状态</strong><br>
+                        湿度: <span style="color: ${currentHumi > 70 ? 'red' : 'black'};">${currentHumi !== null ? currentHumi + ' %' : '不可用'}</span>
+                    `;
+                    controlPanel.appendChild(segBox);
+                } else {
+                    // 更新控制台中的湿度显示
+                    const segBox = document.getElementById('seg-control-' + data.addr);
+                    segBox.innerHTML = `
+                        <strong>${data.addr} - 数码管状态</strong><br>
+                        湿度: <span style="color: ${currentHumi > 70 ? 'red' : 'black'};">${currentHumi !== null ? currentHumi + ' %' : '不可用'}</span>
+                    `;
+                }
             } else {
                 box.innerHTML += '数据暂未处理';
             }
@@ -273,9 +308,17 @@
         });
 
         function sendFanCommand(target, on) {
-            const msg = on ? 'AAOC02010F0200A10101016E' : 'AAOC02010F0200A10101006E';
+            const msg = on ? 'AAOC02010F0200A20101016E' : 'AAOC02010F0200A20101006E';
             socket.emit('send_message', { message: msg, target: target });
         }
+
+
+        function sendSegCommand(target, on) {
+            const msg = on ? 'AAOC02010F0200A40101016E' : 'AAOC02010F0200A40101006E';
+            socket.emit('send_message', { message: msg, target: target });
+        }
+
+
 
         socket.on('disconnected', data => {
             const addr = data.addr;

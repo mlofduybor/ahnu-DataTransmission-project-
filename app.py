@@ -217,7 +217,7 @@ def handle_client(conn, addr):
                     db.session.commit()
             elif sensor_type == 0xa4:
                 sensor = '数码管'
-                readable = {}
+                readable = {'status': '已开启' if payload[0] == 1 else '关闭'}
             else:
                 sensor = '未知'
 

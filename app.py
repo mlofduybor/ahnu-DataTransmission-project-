@@ -201,8 +201,9 @@ def handle_client(conn, addr):
                 readable = {'status': '已开启' if payload[0] == 1 else '关闭'}
             elif sensor_type == 0xa3:  # 光照传感器
                 sensor = '光照'
-                light_value = int(''.join(f"{byte:02x}" for byte in payload[:4]))  # 解析光照值
-                light_value = int(light_value)  # 去掉前导零
+                # light_value = int(''.join(f"{byte:02x}" for byte in payload[:4]))  # 解析光照值
+                # light_value = int(light_value)  # 去掉前导零
+                light_value = int(''.join(chr(b) for b in payload[:4]).lstrip('0') or '0')
                 readable = {'light': light_value}
 
                 # Save to database

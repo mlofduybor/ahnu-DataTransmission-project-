@@ -49,17 +49,36 @@
     <div id="main">
         <div id="dashboard">
             <canvas id="temp-humi-chart" width="400" height="200"></canvas>
+            <canvas id="light-chart" width="400" height="200"></canvas> <!-- 光照图表 -->
         </div>
         <div id="device" style="display:none"></div>
         <div id="control" style="display:none"></div> <!-- ✅ 新增控制台区域 -->
         <div id="database" style="display:none">
-            <h3>实时数据</h3>
-            <div id="realtime-data"></div>
-            <h3>历史数据</h3>
+            <div style="display: flex; justify-content: space-between;">
+                <!-- 温湿度实时数据 -->
+                <div style="width: 48%;">
+                    <h3>温湿度实时数据</h3>
+                    <div id="realtime-data"></div>
+                </div>
+
+                <!-- 光照实时数据 -->
+                <div style="width: 48%;">
+                    <h3>光照实时数据</h3>
+                    <div id="realtime-light-data"></div>
+                </div>
+            </div>
+
+            <h3>温湿度历史数据</h3>
             <input type="datetime-local" id="start-time">
             <input type="datetime-local" id="end-time">
-            <button onclick="fetchHistoryData()">查询</button>
+            <button onclick="fetchHistoryData()">查询温湿度</button>
             <div id="history-data"></div>
+
+            <h3>光照历史数据</h3>
+            <input type="datetime-local" id="light-start-time">
+            <input type="datetime-local" id="light-end-time">
+            <button onclick="fetchHistoryLight()">查询光照</button>
+            <div id="history-light-data"></div>
         </div>
     </div>
 
@@ -77,6 +96,7 @@
         const dashboardMap = {};
 
         let tempHumiChart = null;
+        let lightChart = null;
 
         function initializeChart() {
             const ctx = document.getElementById('temp-humi-chart').getContext('2d');
@@ -122,6 +142,43 @@
             });
         }
 
+        function initializeLightChart() {
+            const ctx = document.getElementById('light-chart').getContext('2d');
+            lightChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [], // 时间轴
+                    datasets: [
+                        {
+                            label: '光照值',
+                            data: [],
+                            borderColor: 'rgba(255, 206, 86, 1)',
+                            backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                            fill: true,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: '时间',
+                            },
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: '光照值',
+                            },
+                            beginAtZero: true,
+                        },
+                    },
+                },
+            });
+        }
+
         socket.on('dashboard_data', data => {
             let box = dashboardMap[data.addr];
             if (!box) {
@@ -156,6 +213,27 @@
                     }
 
                     tempHumiChart.update();
+                }
+            } else if (data.type === '光照') {
+                box.innerHTML += `🌞 光照值: ${data.data.light}`;
+
+                // 更新光照图表数据
+                const currentTime = new Date().toLocaleTimeString();
+                if (lightChart) {
+                    // 限制图表显示的最大数据点数
+                    const maxDataPoints = 10;
+
+                    // 更新光照数据
+                    lightChart.data.labels.push(currentTime);
+                    lightChart.data.datasets[0].data.push(data.data.light);
+
+                    // 移除多余的数据点
+                    if (lightChart.data.labels.length > maxDataPoints) {
+                        lightChart.data.labels.shift();
+                        lightChart.data.datasets[0].data.shift();
+                    }
+
+                    lightChart.update();
                 }
             } else if (data.type === '蜂鸣器' || data.type === '风扇') {
                 box.innerHTML += `状态: ${data.data.status}`;
@@ -230,6 +308,32 @@
                         `;
                         container.appendChild(div);
                     });
+                })
+                .catch(error => {
+                    console.error('获取温湿度实时数据时出错:', error);
+                });
+        }
+
+        function fetchRealtimeLightData() {
+            fetch('/api/realtime_light')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('realtime-light-data');
+                    container.innerHTML = '';
+                    data.forEach(d => {
+                        const div = document.createElement('div');
+                        div.className = 'sensor-box';
+                        div.innerHTML = `
+                            时间: ${d.timestamp}<br>
+                            类型: ${d.device_type}<br>
+                            IP: ${d.ip}<br>
+                            光照值: ${d.light_value}
+                        `;
+                        container.appendChild(div);
+                    });
+                })
+                .catch(error => {
+                    console.error('获取光照实时数据时出错:', error);
                 });
         }
 
@@ -266,11 +370,49 @@
                 });
         }
 
+        function fetchHistoryLight() {
+            const startTime = document.getElementById('light-start-time').value;
+            const endTime = document.getElementById('light-end-time').value;
+            const url = `/api/history_light?start_time=${startTime}&end_time=${endTime}`;
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('history-light-data');
+                    container.innerHTML = '';
+                    if (data.length === 0) {
+                        container.innerHTML = '<p>无数据符合查询要求</p>'; // 如果没有数据，显示提示
+                        return;
+                    }
+                    data.forEach(d => {
+                        const div = document.createElement('div');
+                        div.className = 'sensor-box';
+                        div.innerHTML = `
+                            时间: ${d.timestamp}<br>
+                            类型: ${d.device_type}<br>
+                            IP: ${d.ip}<br>
+                            光照值: ${d.light_value}
+                        `;
+                        container.appendChild(div);
+                    });
+                })
+                .catch(error => {
+                    console.error('查询光照历史数据时出错:', error);
+                    const container = document.getElementById('history-light-data');
+                    container.innerHTML = '<p>查询出错，请稍后重试</p>'; // 显示错误提示
+                });
+        }
+
         // Fetch realtime data every 5 seconds
-        setInterval(fetchRealtimeData, 5000);
+        setInterval(() => {
+            fetchRealtimeData();
+            fetchRealtimeLightData();
+        }, 5000);
 
         window.onload = function () {
             initializeChart();
+            initializeLightChart();
+            fetchRealtimeData();
+            fetchRealtimeLightData();
         };
     </script>
 </body>

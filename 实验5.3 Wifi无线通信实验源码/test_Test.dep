@@ -1,5 +1,5 @@
 Dependencies for Project 'test', Target 'Test': (DO NOT MODIFY !)
-F (.\USER\main.c)(0x680445C3)(-c --cpu Cortex-M3 -D__MICROLIB -g -O0 --apcs=interwork -I.\CORE -I.\USER -I.\STM32F10x_FWLib\inc -I.\HARDWARE-I E:\keil4\ARM\RV31\INC-I E:\keil4\ARM\CMSIS\Include-I E:\keil4\ARM\Inc\ST\STM32F10x-DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER -o .\obj\main.o --omf_browse .\obj\main.crf --depend .\obj\main.d)
+F (.\USER\main.c)(0x6804CD14)(-c --cpu Cortex-M3 -D__MICROLIB -g -O0 --apcs=interwork -I.\CORE -I.\USER -I.\STM32F10x_FWLib\inc -I.\HARDWARE-I E:\keil4\ARM\RV31\INC-I E:\keil4\ARM\CMSIS\Include-I E:\keil4\ARM\Inc\ST\STM32F10x-DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER -o .\obj\main.o --omf_browse .\obj\main.crf --depend .\obj\main.d)
 I (USER\stm32f10x.h)(0x63ABA990)
 I (.\CORE\core_cm3.h)(0x63ABA990)
 I (E:\keil4\ARM\ARMCC\include\stdint.h)(0x51C7B744)

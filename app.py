@@ -15,7 +15,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///sensor_data.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# Define the database model
+# Define the database models
 class SensorData(db.Model):
     def get_beijing_time(self, beijing_tz=None):
         return datetime.now(beijing_tz)  # 直接获取当前北京时间
@@ -25,6 +25,13 @@ class SensorData(db.Model):
     ip = db.Column(db.String(50))
     temperature = db.Column(db.String(10))
     humidity = db.Column(db.String(10))
+
+class LightData(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    device_type = db.Column(db.String(50))
+    ip = db.Column(db.String(50))
+    light_value = db.Column(db.Integer)  # 光照值
 
 # Initialize the database
 with app.app_context():
@@ -74,6 +81,43 @@ def get_history_data():
         'ip': d.ip,
         'temperature': d.temperature,
         'humidity': d.humidity
+    } for d in data])
+
+@app.route('/api/realtime_light', methods=['GET'])
+def get_realtime_light():
+    data = LightData.query.order_by(LightData.timestamp.desc()).limit(10).all()
+    return jsonify([{
+        'timestamp': d.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+        'device_type': d.device_type,
+        'ip': d.ip,
+        'light_value': d.light_value
+    } for d in data])
+
+@app.route('/api/history_light', methods=['GET'])
+def get_history_light():
+    start_time = request.args.get('start_time')
+    end_time = request.args.get('end_time')
+    query = LightData.query
+
+    # 过滤时间范围
+    if start_time:
+        try:
+            query = query.filter(LightData.timestamp >= datetime.fromisoformat(start_time))
+        except ValueError:
+            return jsonify([])  # 如果时间格式错误，返回空数组
+    if end_time:
+        try:
+            query = query.filter(LightData.timestamp <= datetime.fromisoformat(end_time))
+        except ValueError:
+            return jsonify([])  # 如果时间格式错误，返回空数组
+
+    # 查询结果
+    data = query.order_by(LightData.timestamp.desc()).all()
+    return jsonify([{
+        'timestamp': d.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+        'device_type': d.device_type,
+        'ip': d.ip,
+        'light_value': d.light_value
     } for d in data])
 
 @socketio.on('send_message')
@@ -150,14 +194,26 @@ def handle_client(conn, addr):
                     db.session.add(new_data)
                     db.session.commit()
             elif sensor_type == 0xa1:
-                sensor = '蜂鸣器'
-                readable = {'status': '已开启' if payload[0] == 1 else '关闭'}
-            elif sensor_type == 0xa2:
                 sensor = '风扇'
                 readable = {'status': '已开启' if payload[0] == 1 else '关闭'}
-            elif sensor_type == 0xa3:
+            elif sensor_type == 0xa2:
+                sensor = '蜂鸣器'
+                readable = {'status': '已开启' if payload[0] == 1 else '关闭'}
+            elif sensor_type == 0xa3:  # 光照传感器
                 sensor = '光照'
-                readable = {}
+                light_value = int(''.join(f"{byte:02x}" for byte in payload[:4]))  # 解析光照值
+                light_value = int(light_value)  # 去掉前导零
+                readable = {'light': light_value}
+
+                # Save to database
+                with app.app_context():
+                    new_data = LightData(
+                        device_type=sensor,
+                        ip=addr_str,
+                        light_value=light_value
+                    )
+                    db.session.add(new_data)
+                    db.session.commit()
             elif sensor_type == 0xa4:
                 sensor = '数码管'
                 readable = {}

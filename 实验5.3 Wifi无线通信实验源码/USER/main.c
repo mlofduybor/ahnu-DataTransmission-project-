@@ -30,11 +30,14 @@
 #include "string.h"
 
 
-#define type_sensor 1
+#define type_sensor 4
 /*
 	sht3x      1
 	Buzzer     2
 	fan        3
+	
+	seg        4
+	
 */
 
 
@@ -300,11 +303,120 @@ void fan_Init(void)
 /*********************************************************************************************/
 
 
+/*seg************************************************************************************/
+//共阳端码表
+#if type_sensor == 4
+#define CLEAR 0xFFFF
+
+#define HC595_RCC 	RCC_APB2Periph_GPIOA
+#define HC595_PORT	GPIOA
+#define SLCK_PIN 		GPIO_Pin_5
+#define SCLK_PIN 		GPIO_Pin_6
+#define DATA_PIN  	GPIO_Pin_7
+
+
+
+static unsigned char segTable[] ={
+/*#define DB0*/ 0xC0,
+/*#define DB1*/ 0xF9,
+/*#define DB2*/ 0xA4,
+/*#define DB3*/ 0xB0,
+/*#define DB4*/ 0x99,
+/*#define DB5*/ 0X92,
+/*#define DB6*/ 0x82,
+/*#define DB7*/ 0xF8,
+/*#define DB8*/ 0x80,
+/*#define DB9*/ 0x90,
+/*#define DBA*/ 0X88,
+/*#define DBB*/ 0x83,
+/*#define DBC*/ 0xC6,
+/*#define DBD*/ 0xA1,
+/*#define DBE*/ 0x86,	
+/*#define DBF*/ 0X8E
+};
 
 
 
 
+/*******************************************************************************
+  * @brief  
+  * @param  None
+  * @retval None
+*******************************************************************************/
+void send2byte(unsigned short a)
+{
+	unsigned char i,j,temp,byte;
+	
+	for(j=0; j<2; j++)
+	{
+		byte = (a >>(j*8)) & 0xff;
+		
+		for(i=0;i<8;i++)
+		{
+			GPIO_ResetBits(HC595_PORT,SCLK_PIN);
+			
+			temp = byte & 0x80;
+			if (temp == 0)
+			{
+				GPIO_ResetBits(HC595_PORT,DATA_PIN);
+			}
+			else
+			{
+				GPIO_SetBits(HC595_PORT,DATA_PIN);
+			}
+			byte = byte << 1;
+			
+			GPIO_SetBits(HC595_PORT,SCLK_PIN);
+		}
+	}
+}
 
+
+
+/*******************************************************************************
+  * @brief  
+  * @param  None
+  * @retval None
+*******************************************************************************/
+void out595(void)
+{
+	GPIO_ResetBits(HC595_PORT,SLCK_PIN);
+	delay_ms(10);
+	GPIO_SetBits(HC595_PORT,SLCK_PIN);
+}
+
+/*******************************************************************************
+  * @brief  
+  * @param  None
+  * @retval None
+*******************************************************************************/
+void clear(void)
+{
+		send2byte(CLEAR);
+		out595();
+}
+
+void Sensor_Init(void)
+{
+	GPIO_InitTypeDef GPIO_InitStructure;
+
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5|GPIO_Pin_6|GPIO_Pin_7;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;       //推挽输出
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+	GPIO_SetBits(HC595_PORT,SCLK_PIN);
+	GPIO_SetBits(HC595_PORT,DATA_PIN);
+	
+	clear();
+}
+
+
+
+#endif
+
+/*********************************************************************************************/
 
 
 /*******************************************************************************
@@ -340,7 +452,7 @@ int main(void)
 	char packet[64]={0};
 	uint8_t len=0,ret=0;
 	uint8_t data[128]={0};
-  unsigned char buf[16]={0xAA,0x0C,0x02,0x01,0x05,0x02,0x00,0xA1,0x01,0x01,0x00,0xC8};
+  unsigned char buf[16]={0xAA,0x0C,0x02,0x01,0x05,0x02,0x00,0xA2,0x01,0x01,0x00,0xC8};
 	#endif
 	
 	#if type_sensor == 3
@@ -348,7 +460,15 @@ int main(void)
 	char packet[64]={0};
 	uint8_t len=0,ret=0;
 	uint8_t data[128]={0};
-  unsigned char buf[16]={0xAA,0x0C,0x02,0x01,0x05,0x02,0x00,0xA2,0x01,0x01,0x00,0xC8};
+  unsigned char buf[16]={0xAA,0x0C,0x02,0x01,0x05,0x02,0x00,0xA1,0x01,0x01,0x00,0xC8};
+	#endif
+	
+	#if type_sensor == 4
+	uint8_t buzzer_status=0;
+	char packet[64]={0};
+	uint8_t len=0,ret=0;
+	uint8_t data[128]={0};
+  unsigned char buf[16]={0xAA,0x0C,0x02,0x01,0x05,0x02,0x00,0xA3,0x01,0x01,0x00,0xC8};
 	#endif
 	
 	Delay_Init();
@@ -371,6 +491,9 @@ int main(void)
 	#if type_sensor == 1
 	Sensor_Init();
 	#endif
+	#if type_sensor == 4
+	Sensor_Init();
+	#endif
 	
 
 	OLED_ShowString(0,0,"Wifi Client!",16);
@@ -380,6 +503,7 @@ int main(void)
 	ESP8266_StaTcpClient_UnvarnishTest();
 	Delay(100);
 	#endif
+	
 	
 	#if type_sensor == 2
 	OLED_ShowString(0,4,"Buzzer",16);
@@ -392,6 +516,13 @@ int main(void)
 	OLED_ShowString(0,4,"Fan",16);
 	
 	ESP8266_StaTcpClient_UnvarnishTest();			//修改esp8266.h下SSI,"ESP8266Arm00"最后两位为网关编号xx;
+	Delay(100);
+	#endif
+	
+	#if type_sensor == 4
+	OLED_ShowString(0, 4, "seg", 16);
+	
+	ESP8266_StaTcpClient_UnvarnishTest();
 	Delay(100);
 	#endif
 	
@@ -432,8 +563,8 @@ int main(void)
 		
 		buf[10] = (unsigned char  )str1[0];
 		buf[11] = (unsigned char  )str1[1];
-		buf[12] = (unsigned char  )str1[1];
-		buf[13] = (unsigned char  )str1[2];
+		buf[12] = (unsigned char  )str[0];
+		buf[13] = (unsigned char  )str[1];
     buf[14] = (uint8_t)(buf[0]+buf[1]+buf[2]+buf[3]+buf[4]+buf[5]+buf[6]+buf[7]+buf[8]+buf[9]+buf[10]+buf[11]+buf[12]+buf[13]);
 		
 		//if (ret ++ >= 25)
@@ -444,19 +575,19 @@ int main(void)
 		//}
 		#endif
 		
-		#if (type_sensor == 2 || type_sensor == 3)
+		#if (type_sensor == 2 || type_sensor == 3 || type_sensor == 4)
 		#if type_sensor == 2
 		//协议数据更新,加入传感器及校验
     buf[10] = (unsigned char  )buzzer_status;
     buf[11] = (uint8_t)(buf[0]+buf[1]+buf[2]+buf[3]+buf[4]+buf[5]+buf[6]+buf[7]+buf[8]+buf[9]+buf[10]);
 
 		// 定时上传节点信息
-		if(ret++ >= 25)
-		{
+		//if(ret++ >= 25)
+		//{
 			ret = 0;
 			len = Esp8266_Hex2Str(packet, buf, buf[1]);
 			ESP8266_SendString(DISABLE, packet, len, Single_ID_0);
-		}
+		//}
 		#endif
 		
 		
@@ -466,15 +597,27 @@ int main(void)
     buf[11] = (uint8_t)(buf[0]+buf[1]+buf[2]+buf[3]+buf[4]+buf[5]+buf[6]+buf[7]+buf[8]+buf[9]+buf[10]);
 
 		// 定时上传节点信息
-		if(ret++ >= 25)
-		{
+		//if(ret++ >= 25)
+		//{
 			ret = 0;
 			len = Esp8266_Hex2Str(packet, buf, buf[1]);
 			ESP8266_SendString(DISABLE, packet, len, Single_ID_0);
-		}
+		//}
 		#endif
 		
-		
+		#if type_sensor == 4
+		//协议数据更新,加入传感器及校验
+    buf[10] = (unsigned char  )buzzer_status;
+    buf[11] = (uint8_t)(buf[0]+buf[1]+buf[2]+buf[3]+buf[4]+buf[5]+buf[6]+buf[7]+buf[8]+buf[9]+buf[10]);
+
+		// 定时上传节点信息
+		//if(ret++ >= 25)
+		//{
+			ret = 0;
+			len = Esp8266_Hex2Str(packet, buf, buf[1]);
+			ESP8266_SendString(DISABLE, packet, len, Single_ID_0);
+		//}
+		#endif
 		
 		// 判断是否有数据过来
 		if( strEsp8266_Fram_Record.InfBit.FramFinishFlag )
@@ -504,7 +647,7 @@ int main(void)
 				#if type_sensor == 2
 				Esp8266_Str2Hex(data);
 				//???????????
-				if((data[2]==0x02)&&(data[4]==0x0f)&&(data[7]== 0xa1)) //a1 --> buzzer
+				if((data[2]==0x02)&&(data[4]==0x0f)&&(data[7]== 0xa2)) //a1 --> buzzer
 				{ 
 					buzzer_status = data[10];
 					if(data[10]== 0x01)
@@ -527,6 +670,26 @@ int main(void)
 						GPIO_SetBits(GPIOA, GPIO_Pin_6);
 					else
 						GPIO_ResetBits(GPIOA, GPIO_Pin_6 );
+				}		
+				#endif
+				
+				
+				#if type_sensor == 4
+				Esp8266_Str2Hex(data);
+				//???????????
+				if((data[2]==0x02)&&(data[4]==0x0f)&&(data[7]== 0xa3)) //a3 --> seg
+				{ 
+					buzzer_status = data[10];
+					if(data[10]== 0x01){
+						uint8_t i=60;
+						send2byte((segTable[i&0xf] <<8) | segTable[(i>>4)&0x0f]);
+						out595();
+					}
+					else{
+						uint8_t i=0;
+						send2byte((segTable[i&0xf] <<8) | segTable[(i>>4)&0x0f]);
+						out595();
+					}
 				}		
 				#endif
 				

@@ -1,11 +1,34 @@
 # server.py
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
 import threading
 import socket
+from pytz import timezone
 
 app = Flask(__name__)
 socketio = SocketIO(app, async_mode='threading')
+
+# Configure the database
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///sensor_data.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+# Define the database model
+class SensorData(db.Model):
+    def get_beijing_time(self, beijing_tz=None):
+        return datetime.now(beijing_tz)  # 直接获取当前北京时间
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=get_beijing_time)
+    device_type = db.Column(db.String(50))
+    ip = db.Column(db.String(50))
+    temperature = db.Column(db.String(10))
+    humidity = db.Column(db.String(10))
+
+# Initialize the database
+with app.app_context():
+    db.create_all()
 
 clients = {}  # {addr_str: conn}
 client_types = {}  # {addr_str: sensor_type}
@@ -13,6 +36,45 @@ client_types = {}  # {addr_str: sensor_type}
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/api/realtime_data', methods=['GET'])
+def get_realtime_data():
+    data = SensorData.query.order_by(SensorData.timestamp.desc()).limit(10).all()
+    return jsonify([{
+        'timestamp': d.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+        'device_type': d.device_type,
+        'ip': d.ip,
+        'temperature': d.temperature,
+        'humidity': d.humidity
+    } for d in data])
+
+@app.route('/api/history_data', methods=['GET'])
+def get_history_data():
+    start_time = request.args.get('start_time')
+    end_time = request.args.get('end_time')
+    query = SensorData.query
+
+    # 过滤时间范围
+    if start_time:
+        try:
+            query = query.filter(SensorData.timestamp >= datetime.fromisoformat(start_time))
+        except ValueError:
+            return jsonify([])  # 如果时间格式错误，返回空数组
+    if end_time:
+        try:
+            query = query.filter(SensorData.timestamp <= datetime.fromisoformat(end_time))
+        except ValueError:
+            return jsonify([])  # 如果时间格式错误，返回空数组
+
+    # 查询结果
+    data = query.order_by(SensorData.timestamp.desc()).all()
+    return jsonify([{
+        'timestamp': d.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+        'device_type': d.device_type,
+        'ip': d.ip,
+        'temperature': d.temperature,
+        'humidity': d.humidity
+    } for d in data])
 
 @socketio.on('send_message')
 def handle_send_message(data):
@@ -45,17 +107,12 @@ def handle_client(conn, addr):
     socketio.emit('log', {'message': f'客户端已连接: {addr_str}'})
     socketio.emit('client_list', [{'addr': a, 'type': client_types.get(a, '未知')} for a in clients.keys()])
 
-    
-
     try:
         while True:
             data = conn.recv(1024)
             if not data:
                 break
 
-            #msg = list(data)
-            #print(f"[TCP] 收到 {addr_str}: {msg}")
-            
             print("接收到消息：", data.decode('utf-8'))
         
             # 去除结尾换行
@@ -72,15 +129,26 @@ def handle_client(conn, addr):
             payload = msg[10:10 + data_len]
             readable = {}
             
-            temp = bytes(payload[:2]).decode(errors='ignore')
-            humi = bytes(payload[2:4]).decode(errors='ignore')
-            #print(temp, humi);
             
             if sensor_type == 0xa0:
                 sensor = '温湿度'
                 temp = bytes(payload[:2]).decode(errors='ignore')
                 humi = bytes(payload[2:4]).decode(errors='ignore')
                 readable = {'temp': temp, 'humi': humi}
+                # print("data: ", data)
+                # print("msg: ", msg)
+                # print("bottom:", temp, msg[12], msg[13])
+
+                # Save to database
+                with app.app_context():  # ✅ 添加应用上下文
+                    new_data = SensorData(
+                        device_type=sensor,
+                        ip=addr_str,
+                        temperature=temp,
+                        humidity=humi
+                    )
+                    db.session.add(new_data)
+                    db.session.commit()
             elif sensor_type == 0xa1:
                 sensor = '蜂鸣器'
                 readable = {'status': '已开启' if payload[0] == 1 else '关闭'}

@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <title>传感器控制台</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             display: flex;
@@ -43,11 +44,23 @@
         <button onclick="switchTab('dashboard')">Dashboard</button>
         <button onclick="switchTab('device')">设备管理</button>
         <button onclick="switchTab('control')">控制台</button> <!-- ✅ 新增控制台按钮 -->
+        <button onclick="switchTab('database')">数据库管理</button> <!-- ✅ 新增数据库管理按钮 -->
     </div>
     <div id="main">
-        <div id="dashboard"></div>
+        <div id="dashboard">
+            <canvas id="temp-humi-chart" width="400" height="200"></canvas>
+        </div>
         <div id="device" style="display:none"></div>
         <div id="control" style="display:none"></div> <!-- ✅ 新增控制台区域 -->
+        <div id="database" style="display:none">
+            <h3>实时数据</h3>
+            <div id="realtime-data"></div>
+            <h3>历史数据</h3>
+            <input type="datetime-local" id="start-time">
+            <input type="datetime-local" id="end-time">
+            <button onclick="fetchHistoryData()">查询</button>
+            <div id="history-data"></div>
+        </div>
     </div>
 
     <script>
@@ -55,13 +68,59 @@
 
         function switchTab(tab) {
          
-            const tabs = ['dashboard', 'device', 'control'];
+            const tabs = ['dashboard', 'device', 'control', 'database'];
             tabs.forEach(id => {
                 document.getElementById(id).style.display = (tab === id) ? 'block' : 'none';
             });
         }
 
         const dashboardMap = {};
+
+        let tempHumiChart = null;
+
+        function initializeChart() {
+            const ctx = document.getElementById('temp-humi-chart').getContext('2d');
+            tempHumiChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [], // 时间轴
+                    datasets: [
+                        {
+                            label: '温度 (℃)',
+                            data: [],
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            fill: true,
+                        },
+                        {
+                            label: '湿度 (%)',
+                            data: [],
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                            fill: true,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: '时间',
+                            },
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: '值',
+                            },
+                            beginAtZero: true,
+                        },
+                    },
+                },
+            });
+        }
 
         socket.on('dashboard_data', data => {
             let box = dashboardMap[data.addr];
@@ -75,23 +134,45 @@
             box.innerHTML = `<strong>${data.addr}</strong><br>类型: ${data.type}<br>`;
             if (data.type === '温湿度') {
                 box.innerHTML += `🌡️ 温度: ${data.data.temp} ℃<br>💧 湿度: ${data.data.humi} %`;
+
+                // 更新图表数据
+                const currentTime = new Date().toLocaleTimeString();
+                if (tempHumiChart) {
+                    // 限制图表显示的最大数据点数
+                    const maxDataPoints = 10;
+
+                    // 更新温度数据
+                    tempHumiChart.data.labels.push(currentTime);
+                    tempHumiChart.data.datasets[0].data.push(data.data.temp);
+
+                    // 更新湿度数据
+                    tempHumiChart.data.datasets[1].data.push(data.data.humi);
+
+                    // 移除多余的数据点
+                    if (tempHumiChart.data.labels.length > maxDataPoints) {
+                        tempHumiChart.data.labels.shift();
+                        tempHumiChart.data.datasets[0].data.shift();
+                        tempHumiChart.data.datasets[1].data.shift();
+                    }
+
+                    tempHumiChart.update();
+                }
             } else if (data.type === '蜂鸣器' || data.type === '风扇') {
                 box.innerHTML += `状态: ${data.data.status}`;
                 if (data.type === '风扇') {
-                    // 在控制台生成按钮
-                const controlPanel = document.getElementById('control');
-                if (!document.getElementById('fan-control-' + data.addr)) {
-                    const fanBox = document.createElement('div');
-                    fanBox.className = 'sensor-box';
-                    fanBox.id = 'fan-control-' + data.addr;
-                    fanBox.innerHTML = `
-                        <strong>${data.addr} - 风扇控制</strong><br>
-                        <button onclick="sendFanCommand('${data.addr}', true)">启动</button>
-                        <button onclick="sendFanCommand('${data.addr}', false)">关闭</button>
-                    `;
-                    controlPanel.appendChild(fanBox);
+                    const controlPanel = document.getElementById('control');
+                    if (!document.getElementById('fan-control-' + data.addr)) {
+                        const fanBox = document.createElement('div');
+                        fanBox.className = 'sensor-box';
+                        fanBox.id = 'fan-control-' + data.addr;
+                        fanBox.innerHTML = `
+                            <strong>${data.addr} - 风扇控制</strong><br>
+                            <button onclick="sendFanCommand('${data.addr}', true)">启动</button>
+                            <button onclick="sendFanCommand('${data.addr}', false)">关闭</button>
+                        `;
+                        controlPanel.appendChild(fanBox);
+                    }
                 }
-            }
             } else {
                 box.innerHTML += '数据暂未处理';
             }
@@ -131,6 +212,66 @@
             console.log(`客户端 ${addr} 已断开，界面已清理`);
         });
 
+        function fetchRealtimeData() {
+            fetch('/api/realtime_data')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('realtime-data');
+                    container.innerHTML = '';
+                    data.forEach(d => {
+                        const div = document.createElement('div');
+                        div.className = 'sensor-box';
+                        div.innerHTML = `
+                            时间: ${d.timestamp}<br>
+                            类型: ${d.device_type}<br>
+                            IP: ${d.ip}<br>
+                            温度: ${d.temperature} ℃<br>
+                            湿度: ${d.humidity} %
+                        `;
+                        container.appendChild(div);
+                    });
+                });
+        }
+
+        function fetchHistoryData() {
+            const startTime = document.getElementById('start-time').value;
+            const endTime = document.getElementById('end-time').value;
+            const url = `/api/history_data?start_time=${startTime}&end_time=${endTime}`;
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('history-data');
+                    container.innerHTML = '';
+                    if (data.length === 0) {
+                        container.innerHTML = '<p>无数据符合查询要求</p>'; // 如果没有数据，显示提示
+                        return;
+                    }
+                    data.forEach(d => {
+                        const div = document.createElement('div');
+                        div.className = 'sensor-box';
+                        div.innerHTML = `
+                            时间: ${d.timestamp}<br>
+                            类型: ${d.device_type}<br>
+                            IP: ${d.ip}<br>
+                            温度: ${d.temperature} ℃<br>
+                            湿度: ${d.humidity} %
+                        `;
+                        container.appendChild(div);
+                    });
+                })
+                .catch(error => {
+                    console.error('查询历史数据时出错:', error);
+                    const container = document.getElementById('history-data');
+                    container.innerHTML = '<p>查询出错，请稍后重试</p>'; // 显示错误提示
+                });
+        }
+
+        // Fetch realtime data every 5 seconds
+        setInterval(fetchRealtimeData, 5000);
+
+        window.onload = function () {
+            initializeChart();
+        };
     </script>
 </body>
 </html>
